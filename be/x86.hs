@@ -211,7 +211,7 @@ dwarf_reg r = case r of
 n_hardregs = 6
 n_callee_saves = 4
 
-
+{- HEAD COMMENT
 is_ty32 :: ScalarTy -> Bool
 is_ty32 (ValTy Bits32) = True
 is_ty32 (AddrTy _) = True
@@ -222,7 +222,7 @@ is_ty32 _ = False
 
 
 
-{- HEAD COMMENT
+
 let is_ty32 (ty:Il.scalar_ty) : bool =
   match ty with
       Il.ValTy (Il.Bits32) -> true

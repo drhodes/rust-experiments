@@ -1,3 +1,5 @@
+import Common
+
 main=do{print "correct"}
 
 --open Common;;
@@ -15,8 +17,8 @@ data Bits = Bits8
           | Bits64
             deriving(Ord, Show, Eq)
 
-data ScalarTy a = ValTy Bits
-                | AddrTy ReferentTy
+data ScalarTy = ValTy Bits
+              | AddrTy ReferentTy
                  
 
 -- replaced ScalarTy RefScalarTy
@@ -28,29 +30,30 @@ data ReferentTy = RefScalarTy ScalarTy
                | CodeTy              
                | NilTy                
 
-{- HEAD
-let (voidptr_t:scalar_ty) = AddrTy OpaqueTy;;
-let (codeptr_t:scalar_ty) = AddrTy CodeTy;;
+
+--let (voidptr_t:ScalarTy) = AddrTy OpaqueTy;;
+--let (codeptr_t:ScalarTy) = AddrTy CodeTy;;
+
 
 {- Operands. -}
 
-type vreg = int ;;
-type hreg = int ;;
-type label = int ;;
-type spill = int ;;
+type Vreg = Int 
+type Hreg = Int 
+type Label = Int
+type Spill = Int
 
-type reg =
-    Vreg of vreg
-  | Hreg of hreg
+
+data Reg = Vreg Vreg
+         | Hreg Hreg
+           deriving (Show, Eq)
+
+
+data Mem = Abs Asm.expr64
+         | RegIn of (reg * (Asm.expr64 option))
+         | Spill Spill
 ;;
-
-type mem =
-    Abs of Asm.expr64
-  | RegIn of (reg * (Asm.expr64 option))
-  | Spill of spill
-;;
-
-type typed_reg = (reg * scalar_ty);;
+{- HEAD
+type typed_reg = (reg * ScalarTy);;
 type typed_mem = (mem * referent_ty);;
 type typed_imm = (Asm.expr64 * ty_mach);;
 type typed_imm_ptr = (fixup * referent_ty);;
@@ -61,7 +64,7 @@ type cell =
 ;;
 
 {- 
- * ImmPtr (a, rty) can be assigned to anything of scalar_ty 
+ * ImmPtr (a, rty) can be assigned to anything of ScalarTy 
  * AddrTy rty; the difference is that ImmAddr carries its value
  * so can be used in cases where we want to have an immediate
  * address constant-propagated through the code to the backend.
@@ -259,22 +262,22 @@ let bits_of_ty_mach (tm:ty_mach) : bits =
     | TY_f64 -> Bits64
 ;;
 
-let cell_scalar_ty (c:cell) : scalar_ty =
+let cell_ScalarTy (c:cell) : ScalarTy =
   match c with
       Reg (_, st) -> st
     | Mem (_, RefScalarTy st) -> st
-    | _ -> bug () "mem of non-scalar in Il.cell_scalar_ty"
+    | _ -> bug () "mem of non-scalar in Il.cell_ScalarTy"
 ;;
 
-let operand_scalar_ty (op:operand) : scalar_ty =
+let operand_ScalarTy (op:operand) : ScalarTy =
   match op with
-      Cell c -> cell_scalar_ty c
+      Cell c -> cell_ScalarTy c
     | Imm (_, t) -> ValTy (bits_of_ty_mach t)
     | ImmPtr (_, t) -> AddrTy t
 ;;
 
 
-let scalar_ty_bits (word_bits:bits) (st:scalar_ty) : bits =
+let ScalarTy_bits (word_bits:bits) (st:ScalarTy) : bits =
   match st with
       ValTy bits -> bits
     | AddrTy _ -> word_bits
@@ -282,8 +285,8 @@ let scalar_ty_bits (word_bits:bits) (st:scalar_ty) : bits =
 
 let cell_bits (word_bits:bits) (c:cell) : bits =
   match c with
-      Reg (_, st) -> scalar_ty_bits word_bits st
-    | Mem (_, RefScalarTy st) -> scalar_ty_bits word_bits st
+      Reg (_, st) -> ScalarTy_bits word_bits st
+    | Mem (_, RefScalarTy st) -> ScalarTy_bits word_bits st
     | Mem _ -> bug () "mem of non-scalar in Il.cell_bits"
 ;;
 
@@ -310,18 +313,18 @@ let bits_align (bits:bits) : int64 =
     | Bits64 -> 8L
 ;;
 
-let scalar_ty_size (word_bits:bits) (st:scalar_ty) : int64 =
-  bits_size (scalar_ty_bits word_bits st)
+let ScalarTy_size (word_bits:bits) (st:ScalarTy) : int64 =
+  bits_size (ScalarTy_bits word_bits st)
 ;;
 
-let scalar_ty_align (word_bits:bits) (st:scalar_ty) : int64 =
-  bits_align (scalar_ty_bits word_bits st)
+let ScalarTy_align (word_bits:bits) (st:ScalarTy) : int64 =
+  bits_align (ScalarTy_bits word_bits st)
 ;;
 
 let rec referent_ty_layout (word_bits:bits) (rt:referent_ty) : (size * size) =
   match rt with
-      RefScalarTy st -> (SIZE_fixed (scalar_ty_size word_bits st),
-                      SIZE_fixed (scalar_ty_align word_bits st))
+      RefScalarTy st -> (SIZE_fixed (ScalarTy_size word_bits st),
+                      SIZE_fixed (ScalarTy_align word_bits st))
     | StructTy rts ->
         begin
           let accum (off,align) rt : (size * size) =
@@ -494,14 +497,14 @@ let string_of_bits (b:bits) : string =
     | Bits64 -> "b64"
 ;;
 
-let rec string_of_scalar_ty (s:scalar_ty) : string =
+let rec string_of_ScalarTy (s:ScalarTy) : string =
   match s with
       ValTy b -> (string_of_bits b)
     | AddrTy r -> (string_of_referent_ty r) ^ "*"
 
 and string_of_referent_ty (r:referent_ty) : string =
   match r with
-      RefScalarTy s ->  (string_of_scalar_ty s)
+      RefScalarTy s ->  (string_of_ScalarTy s)
     | StructTy rs ->
         Printf.sprintf "[%s]"
           (String.concat ","
@@ -547,7 +550,7 @@ let string_of_cell (f:hreg_formatter) (c:cell) : string =
       Reg (r,ty) ->
         if !log_iltypes
         then
-          Printf.sprintf "%s:%s" (string_of_reg f r) (string_of_scalar_ty ty)
+          Printf.sprintf "%s:%s" (string_of_reg f r) (string_of_ScalarTy ty)
         else
           Printf.sprintf "%s" (string_of_reg f r)
     | Mem (a,ty) ->
@@ -755,7 +758,7 @@ let next_vreg (e:emitter) : reg =
   Vreg (next_vreg_num e)
 ;;
 
-let next_vreg_cell (e:emitter) (s:scalar_ty) : cell =
+let next_vreg_cell (e:emitter) (s:ScalarTy) : cell =
   Reg ((next_vreg e), s)
 ;;
 
@@ -947,7 +950,7 @@ let emit_full
       then
         let tmp =
           Mem (next_spill_slot e
-                 (RefScalarTy (operand_scalar_ty old_lhs_op)))
+                 (RefScalarTy (operand_ScalarTy old_lhs_op)))
         in
           emit_mov tmp old_lhs_op;
           Cell tmp
@@ -959,7 +962,7 @@ let emit_full
       then
         let tmp =
           Mem (next_spill_slot e
-                 (RefScalarTy (operand_scalar_ty old_rhs_op)))
+                 (RefScalarTy (operand_ScalarTy old_rhs_op)))
         in
           emit_mov tmp old_rhs_op;
           Cell tmp
@@ -1092,16 +1095,5 @@ let get_element_ptr
     | _ -> bug () "get_element_ptr %d on cell %s" i
         (string_of_cell fmt mem_cell)
 ;;
-
-{-
- * Local Variables:
- * fill-column: 78;
- * indent-tabs-mode: nil
- * buffer-file-coding-system: utf-8-unix
- * compile-command: "make -k -C ../.. 2>&1 | sed -e 's/\\/x\\//x:\\//g'";
- * End:
- -}
-
-
 
 TAIL -}
