@@ -1,3 +1,4 @@
+import Common
 {-
  * x86/ia32 instructions have 6 parts:
  *
@@ -211,7 +212,13 @@ n_hardregs = 6
 n_callee_saves = 4
 
 
---is_ty32
+is_ty32 :: ScalarTy -> Bool
+is_ty32 (ValTy Bits32) = True
+is_ty32 (AddrTy _) = True
+is_ty32 _ = False
+        
+                         
+
 
 
 
@@ -2361,16 +2368,5 @@ let frags_of_emitted_quads (sess:Session.sess) (e:Il.emitter) : Asm.frag =
     then raise Unrecognized
     else frag
 ;;
-
-
-{-
- * Local Variables:
- * fill-column: 78;
- * indent-tabs-mode: nil
- * buffer-file-coding-system: utf-8-unix
- * compile-command: "make -k -C ../.. 2>&1 | sed -e 's/\\/x\\//x:\\//g'";
- * End:
- -}
-
 
 TAIL COMMENT -}

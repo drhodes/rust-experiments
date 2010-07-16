@@ -1,3 +1,5 @@
+module Common where
+
 import Text.Printf
 import Data.Bits
 
@@ -8,8 +10,6 @@ import Data.Bits
  * This module goes near the *bottom* of the dependency DAG, and holds basic
  * types shared across all phases of the compiler.
  -}
-
-main = do { print "Hello" }
 
 type Filename = String
 data Pos = Pos Filename Int Int
@@ -620,10 +620,6 @@ mul_sz a b =
       (SIZE_fixed a, SIZE_fixed b) -> SIZE_fixed (a * b)
       (a, SIZE_fixed b) -> SIZE_rt_mul (SIZE_fixed b) a
       (a, b) -> SIZE_rt_mul a b
-
-if' :: Bool -> a -> a -> a
-if' True  x _ = x
-if' False _ y = y
 
 max_sz :: Size -> Size -> Size
 max_sz a b =
