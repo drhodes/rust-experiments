@@ -1,4 +1,5 @@
 import Text.Printf
+import Data.Bits
 
 {-
  * This module goes near the *bottom* of the dependency DAG, and holds basic
@@ -30,11 +31,8 @@ int_of_constr (Constr i) = i
 
 data Identified a = Indentified { node :: a, id :: NodeId }
 
-{-
-let bug _ =
-        let k s = failwith s
-        in Printf.ksprintf k
--}
+
+bug s = s
 
 
 {-
@@ -453,12 +451,17 @@ let i64_max (a:int64) (b:int64) : int64 =
   (if (Int64.compare a b) > 0 then a else b)
 let i64_min (a:int64) (b:int64) : int64 =
   (if (Int64.compare a b) < 0 then a else b)
-let i64_align (align:int64) (v:int64) : int64 =
-  (assert (align <> 0L));
-  let mask = Int64.sub align 1L in
-    Int64.logand (Int64.lognot mask) (Int64.add v mask)
+-}
+i64_align :: Integer -> Integer -> Integer -- ????
+i64_align 0 v = (-666) -- ???
+i64_align align v =       
+    (complement mask) .&. (v + mask)
+    --  Int64.logand (Int64.lognot mask) (Int64.add v mask)
+    where 
+      mask = align - 1
+         
 ;;
-
+{-
 let rec i64_for (lo:int64) (hi:int64) (thunk:int64 -> unit) : unit =
   if i64_lt lo hi then
     begin
@@ -625,37 +628,34 @@ max_sz a b =
       (SIZE_fixed 1, SIZE_rt_align _ _) -> b
       (SIZE_param_align _, SIZE_fixed 1) -> a
       (SIZE_fixed 1, SIZE_param_align _) -> b
-      (a, SIZE_rt_max b c) -> (\x -> max_sz x x)
+      (a, SIZE_rt_max b c) | (a == b) -> max_sz a c
+                           | (a == c) -> max_sz a b    
 
-                    
+      (SIZE_rt_max b c, a) | (a == b) -> max_sz a c
+                           | (a == c) -> max_sz a b
 
+      (SIZE_fixed a, SIZE_fixed b) -> SIZE_fixed (max a b)
+      (SIZE_fixed 0, b) | (no_negs b) -> b
 
-{- HEAD    
-      | (a, SIZE_rt_max (b, c)) when a = b -> max_sz a c
-      | (a, SIZE_rt_max (b, c)) when a = c -> max_sz a b
-
-      (SIZE_rt_max (b, c), a) when a = b -> max_sz a c
-      (SIZE_rt_max (b, c), a) when a = c -> max_sz a b
-      (SIZE_fixed a, SIZE_fixed b) -> SIZE_fixed (i64_max a b)
-      (SIZE_fixed 0, b) when no_negs b -> b
-      (a, SIZE_fixed 0) when no_negs a -> b
+      (a, SIZE_fixed 0) | no_negs a -> b
       (a, SIZE_fixed b) -> max_sz (SIZE_fixed b) a
-      (a, b) when a = b -> a
-      (a, b) -> SIZE_rt_max (a, b)      
+      (a, b) | a == b -> a
+      (a, b) -> SIZE_rt_max a b
 
     where 
       no_negs x =
           case x of 
-            SIZE_fixed _ -> true
-            SIZE_fixup_mem_sz _ -> true
-            SIZE_fixup_mem_pos _ -> true
-            SIZE_param_size _ -> true
-            SIZE_param_align _ -> true
-            SIZE_rt_neg _ -> false
-            SIZE_rt_add (a,b) -> (no_negs a) && (no_negs b)
-            SIZE_rt_mul (a,b) -> (no_negs a) && (no_negs b)
-            SIZE_rt_max (a,b) -> (no_negs a) && (no_negs b)
-            SIZE_rt_align (a,b) -> (no_negs a) && (no_negs b)
+            SIZE_fixed _ -> True
+            SIZE_fixup_mem_sz _ -> True
+            SIZE_fixup_mem_pos _ -> True
+            SIZE_param_size _ -> True
+            SIZE_param_align _ -> True
+            SIZE_rt_neg _ -> False
+
+            SIZE_rt_add a b -> (no_negs a) && (no_negs b)
+            SIZE_rt_mul a b -> (no_negs a) && (no_negs b)
+            SIZE_rt_max a b -> (no_negs a) && (no_negs b)
+            SIZE_rt_align a b -> (no_negs a) && (no_negs b)
 
 
 
@@ -665,45 +665,53 @@ max_sz a b =
  * illegible.
  -}
 
-let align_sz (a:size) (b:size) : size =
-  let rec alignment_of s =
-    match s with
-        SIZE_rt_align (SIZE_fixed n, s) ->
-          let inner_alignment = alignment_of s in
-            if (Int64.rem n inner_alignment) = 0L
-            then inner_alignment
-            else n
-      | SIZE_rt_add (SIZE_fixed n, s)
-      | SIZE_rt_add (s, SIZE_fixed n) ->
-          let inner_alignment = alignment_of s in
-            if (Int64.rem n inner_alignment) = 0L
-            then inner_alignment
-            else 1L {- This could be lcd(...) or such. -}
-      | SIZE_rt_max (a, SIZE_fixed 1L) -> alignment_of a
-      | SIZE_rt_max (SIZE_fixed 1L, b) -> alignment_of b
-      | _ -> 1L
-  in
-    match (a, b) with
-        (SIZE_fixed a, SIZE_fixed b) -> SIZE_fixed (i64_align a b)
-      | (SIZE_fixed x, _) when i64_lt x 1L -> bug () "alignment less than 1"
-      | (SIZE_fixed 1L, b) -> b {- everything is 1-aligned. -}
-      | (_, SIZE_fixed 0L) -> b {- 0 is everything-aligned. -}
-      | (SIZE_fixed a, b) ->
+align_sz :: Size -> Size -> Size
+align_sz a b = 
+    case (a, b) of
+      (SIZE_fixed a, SIZE_fixed b) -> SIZE_fixed (i64_align a b)
+      (SIZE_fixed x, _) | x < 1 -> SizeUnknown --bug () "alignment less than 1"
+      (SIZE_fixed 1, b) -> b {- everything is 1-aligned. -}
+      (_, SIZE_fixed 0) -> b {- 0 is everything-aligned. -}
+      (SIZE_fixed a, b) ->
           let inner_alignment = alignment_of b in
-          if (Int64.rem a inner_alignment) = 0L
+          if (a `rem` inner_alignment) == 0
           then b
-          else SIZE_rt_align (SIZE_fixed a, b)
-      | (SIZE_rt_max (a, SIZE_fixed 1L), b) -> SIZE_rt_align (a, b)
-      | (SIZE_rt_max (SIZE_fixed 1L, a), b) -> SIZE_rt_align (a, b)
-      | (a, b) -> SIZE_rt_align (a, b)
-;;
+          else SIZE_rt_align (SIZE_fixed a) b
+      (SIZE_rt_max a (SIZE_fixed 1), b) -> SIZE_rt_align a b
+      (SIZE_rt_max (SIZE_fixed 1) a, b) -> SIZE_rt_align a b
+      (a, b) -> SIZE_rt_align a b
 
-let force_sz (a:size) : int64 =
-  match a with
+    where 
+      alignment_of s =
+          case s of
+            SIZE_rt_align (SIZE_fixed n) s ->
+                let inner_alignment = alignment_of s in
+                if (n `rem` inner_alignment) == 0
+                then inner_alignment
+                else n
+
+            SIZE_rt_add (SIZE_fixed n) s -> 
+                let inner_alignment = alignment_of s in
+                if (n `rem` inner_alignment) == 0
+                then inner_alignment
+                else 1 {- This could be lcd(...) or such. -}
+
+            SIZE_rt_add s (SIZE_fixed n) ->
+                let inner_alignment = alignment_of s in
+                if (n `rem` inner_alignment) == 0
+                then inner_alignment
+                else 1 {- This could be lcd(...) or such. -}
+
+            SIZE_rt_max a (SIZE_fixed 1) -> (alignment_of a)
+            SIZE_rt_max (SIZE_fixed 1) b -> alignment_of b
+            _ -> 1
+
+
+force_sz :: Size -> Integer
+force_sz a =
+    case a of
       SIZE_fixed i -> i
-    | _ -> bug () "force_sz: forced non-fixed size expression %s"
-        (string_of_size a)
-;;
+    --_ -> bug $ printf "force_sz: forced non-fixed size expression %s" (string_of_size a)
 
-
+{- HEAD                                 
 -}
