@@ -2,9 +2,13 @@ import Text.Printf
 import Data.Bits
 
 {-
+ * Ported from the ocaml version of this file by the Rust Authors
+ * It's almost a direct translation.
+
  * This module goes near the *bottom* of the dependency DAG, and holds basic
  * types shared across all phases of the compiler.
  -}
+
 main = do { print "Hello" }
 
 type Filename = String
